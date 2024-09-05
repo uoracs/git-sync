@@ -32,7 +32,7 @@ Make it executable:
 
 ## Configuration
 
-git-sync requires a YAML config file to run. By default, this file is stored at 
+git-sync requires a YAML config file to run. By default, this file is stored at
 `/etc/git-sync/config.yaml`, and you can specify a different path by setting
 `GIT_SYNC_CONFIG_PATH=/path/to/your/config.yaml`.
 
@@ -65,19 +65,19 @@ repositories:
 
 The listen address for the server.
 
-Default: ""
+_Default: ""_
 
 #### port
 
 The listen port for the server.
 
-Default: 8654
+_Default: 8654_
 
 #### global_tokens
 
 Any authentication tokens specified here will be added to the tokens list of all the repositories.
 
-Default: []
+_Default: []_
 
 ### Repository Config
 
@@ -94,18 +94,18 @@ Path to the local repository on disk.
 
 Branch to sync against.
 
-Default: main
+_Default: main_
 
 #### tokens
 
 Authentication tokens specific to the repository.
 
-Default: []
+_Default: []_
 
 ## (Optional) Systemd
 
 There is a sample service file in extras/systemd. To install, copy that file to
-`/etc/systemd/system/git-sync.service` and edit it for any adjustments to your system, 
+`/etc/systemd/system/git-sync.service` and edit it for any adjustments to your system,
 such as the location of the binary, or the path to your config file.
 
 Run `systemctl daemon-reload`, then `systemctl enable --now git-sync` to run the service.
