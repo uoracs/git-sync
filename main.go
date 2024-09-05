@@ -13,23 +13,22 @@ import (
 )
 
 type repositoryConfig struct {
-	Name    string   `yaml:"name"`
-	Local   string   `yaml:"local"`
-	Remote  string   `yaml:"remote"`
-	Branch  string   `yaml:"branch"`
-	ApiKeys []string `yaml:"api_keys"`
+	Name   string   `yaml:"name"`
+	Local  string   `yaml:"local"`
+	Remote string   `yaml:"remote"`
+	Branch string   `yaml:"branch"`
+	Tokens []string `yaml:"tokens"`
 }
 
-func (rc repositoryConfig) validKey(key string) bool {
-	return slices.Contains(rc.ApiKeys, key)
+func (rc repositoryConfig) validToken(key string) bool {
+	return slices.Contains(rc.Tokens, key)
 }
 
 type serverConfig struct {
 	Address      string             `yaml:"address"`
 	Port         string             `yaml:"port"`
-	MasterKey    string             `yaml:"master_key"`
+	GlobalTokens []string           `yaml:"global_tokens"`
 	Repositories []repositoryConfig `yaml:"repositories"`
-	LogDirectory string             `yaml:"log_directory"`
 }
 
 func (sc serverConfig) getRepository(name string) (*repositoryConfig, error) {
@@ -41,9 +40,9 @@ func (sc serverConfig) getRepository(name string) (*repositoryConfig, error) {
 	return nil, fmt.Errorf("failed to find configured repository with name: %s", name)
 }
 
-func (sc serverConfig) keyExists(key string) bool {
+func (sc serverConfig) tokenExists(key string) bool {
 	for _, r := range sc.Repositories {
-		if slices.Contains(r.ApiKeys, key) {
+		if slices.Contains(r.Tokens, key) {
 			return true
 		}
 	}
@@ -82,13 +81,10 @@ func loadConfig(path string) (*serverConfig, error) {
 
 func processConfig(c *serverConfig) error {
 	if c.Address == "" {
-		c.Address = ""
+		c.Address = "0.0.0.0"
 	}
 	if c.Port == "" {
 		c.Port = "8654"
-	}
-	if c.LogDirectory == "" {
-
 	}
 	for i, r := range c.Repositories {
 		if r.Name == "" {
@@ -103,8 +99,10 @@ func processConfig(c *serverConfig) error {
 		if r.Branch == "" {
 			r.Branch = "main"
 		}
-		if c.MasterKey != "" {
-			c.Repositories[i].ApiKeys = append(r.ApiKeys, c.MasterKey)
+		if len(c.GlobalTokens) > 0 {
+			for _, t := range c.GlobalTokens {
+				c.Repositories[i].Tokens = append(r.Tokens, t)
+			}
 		}
 	}
 	return nil
@@ -191,19 +189,19 @@ func main() {
 
 	router := http.NewServeMux()
 	router.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		// Check the key first
-		reqKey := r.Header.Get("X-GIT-SYNC-KEY")
-		if reqKey == "" {
+		// Check the token first
+		reqToken := r.Header.Get("X-GIT-SYNC-TOKEN")
+		if reqToken == "" {
 			w.WriteHeader(http.StatusUnauthorized)
 			fmt.Fprintf(w, "Unauthorized\n")
 			return
 		}
-		if !config.keyExists(reqKey) {
+		if !config.tokenExists(reqToken) {
 			w.WriteHeader(http.StatusUnauthorized)
 			fmt.Fprintf(w, "Unauthorized\n")
 			return
 		}
-		// key is valid in SOME repo, start processing
+		// token is valid in SOME repo, start processing
 		// return GET requests with nothing
 		if r.Method == "GET" {
 			w.WriteHeader(http.StatusOK)
@@ -236,7 +234,7 @@ func main() {
 			return
 		}
 		// validate key exists in repo config
-		if !repoConfig.validKey(reqKey) {
+		if !repoConfig.validToken(reqToken) {
 			w.WriteHeader(http.StatusUnauthorized)
 			fmt.Fprintf(w, "Unauthorized\n")
 			return
