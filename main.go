@@ -54,7 +54,7 @@ type repositoryRequest struct {
 }
 
 func getConfigPath() (string, error) {
-	defaultPath := "/etc/gic-sync/config.yaml"
+	defaultPath := "/etc/git-sync/config.yaml"
 	path, found := os.LookupEnv("GIT_SYNC_CONFIG_PATH")
 	if found {
 		return path, nil
@@ -111,10 +111,6 @@ func processConfig(c *serverConfig) error {
 func localPathExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
-}
-
-func logOperation(r repositoryConfig) {
-	slog.Info(r.Name, "local", r.Local, "remote", r.Remote, "branch", r.Branch)
 }
 
 func fetchRepository(r repositoryConfig) error {
@@ -183,8 +179,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	fmt.Printf("%#v\n", config)
-
 	connStr := fmt.Sprintf("%s:%s", config.Address, config.Port)
 
 	router := http.NewServeMux()
@@ -192,11 +186,13 @@ func main() {
 		// Check the token first
 		reqToken := r.Header.Get("X-GIT-SYNC-TOKEN")
 		if reqToken == "" {
+			slog.Warn("token not provided", "source_ip", r.Header.Get("x-forwarded-for"))
 			w.WriteHeader(http.StatusUnauthorized)
 			fmt.Fprintf(w, "Unauthorized\n")
 			return
 		}
 		if !config.tokenExists(reqToken) {
+			slog.Warn("invalid token", "source_ip", r.Header.Get("x-forwarded-for"))
 			w.WriteHeader(http.StatusUnauthorized)
 			fmt.Fprintf(w, "Unauthorized\n")
 			return
@@ -204,12 +200,14 @@ func main() {
 		// token is valid in SOME repo, start processing
 		// return GET requests with nothing
 		if r.Method == "GET" {
+			slog.Warn("hit GET", "source_ip", r.Header.Get("x-forwarded-for"))
 			w.WriteHeader(http.StatusOK)
 			fmt.Fprintf(w, "OK\n")
 			return
 		}
 		// fail early to reduce indentation
 		if r.Method != "POST" {
+			slog.Warn("invalid method", "source_ip", r.Header.Get("x-forwarded-for"))
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			fmt.Fprintf(w, "GET or POST only\n")
 			return
@@ -218,29 +216,34 @@ func main() {
 		var repReq repositoryRequest
 		err := json.NewDecoder(r.Body).Decode(&repReq)
 		if err != nil {
+			slog.Warn("failed to unmarshal body", "source_ip", r.Header.Get("x-forwarded-for"))
 			w.WriteHeader(http.StatusBadRequest)
 			fmt.Fprintf(w, "Bad Request: Failed to unmarshal json body: %v\n", err)
 			return
 		}
 		if repReq.Name == "" {
+			slog.Warn("repository name not provided", "source_ip", r.Header.Get("x-forwarded-for"))
 			w.WriteHeader(http.StatusBadRequest)
 			fmt.Fprintf(w, "Bad Request: Repository name not provided\n")
 			return
 		}
 		repoConfig, err := config.getRepository(repReq.Name)
 		if err != nil {
+			slog.Warn("repository not found", "source_ip", r.Header.Get("x-forwarded-for"))
 			w.WriteHeader(http.StatusNotFound)
 			fmt.Fprintf(w, "Bad Request: Repository not found: %v\n", err)
 			return
 		}
 		// validate key exists in repo config
 		if !repoConfig.validToken(reqToken) {
+			slog.Warn("invalid token for repository", "source_ip", r.Header.Get("x-forwarded-for"))
 			w.WriteHeader(http.StatusUnauthorized)
 			fmt.Fprintf(w, "Unauthorized\n")
 			return
 		}
 		// all good
-		logOperation(*repoConfig)
+		slog.Info(repoConfig.Name, "local", repoConfig.Local, "remote", repoConfig.Remote, "branch", repoConfig.Branch)
+
 		syncRepository(*repoConfig)
 	})
 
